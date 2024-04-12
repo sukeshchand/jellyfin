@@ -685,11 +685,11 @@ namespace MediaBrowser.Providers.Manager
 
                 try
                 {
-                    var localItem = await provider.GetMetadata(itemInfo, options.DirectoryService, cancellationToken).ConfigureAwait(false);
+                    List<MetadataResult<TItemType>> localItems = await provider.GetMetadata(itemInfo, options.DirectoryService, cancellationToken).ConfigureAwait(false);
 
-                    if (localItem.HasMetadata)
+                    if (localItems.HasMetadata)
                     {
-                        foreach (var remoteImage in localItem.RemoteImages)
+                        foreach (var remoteImage in localItems.RemoteImages)
                         {
                             try
                             {
@@ -716,16 +716,16 @@ namespace MediaBrowser.Providers.Manager
                             imageService.UpdateReplaceImages(options, foundImageTypes);
                         }
 
-                        if (imageService.MergeImages(item, localItem.Images, options))
+                        if (imageService.MergeImages(item, localItems.Images, options))
                         {
                             refreshResult.UpdateType |= ItemUpdateType.ImageUpdate;
                         }
 
-                        MergeData(localItem, temp, Array.Empty<MetadataField>(), options.ReplaceAllMetadata, true);
+                        MergeData(localItems, temp, Array.Empty<MetadataField>(), options.ReplaceAllMetadata, true);
                         refreshResult.UpdateType |= ItemUpdateType.MetadataImport;
 
                         // Only one local provider allowed per item
-                        if (item.IsLocked || localItem.Item.IsLocked || IsFullLocalMetadata(localItem.Item))
+                        if (item.IsLocked || localItems.Item.IsLocked || IsFullLocalMetadata(localItems.Item))
                         {
                             hasLocalMetadata = true;
                         }
