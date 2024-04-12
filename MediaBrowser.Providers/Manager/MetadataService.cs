@@ -787,6 +787,18 @@ namespace MediaBrowser.Providers.Manager
             return refreshResult;
         }
 
+
+        private static string AppendToFileName(string fileName, string appendText)
+        {
+            string originalFileNameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
+            string fileExtension = Path.GetExtension(fileName);
+
+            string newFileName = originalFileNameWithoutExtension + appendText + fileExtension;
+
+            string fullPathWithPostfix = Path.Combine(Path.GetDirectoryName(fileName), newFileName);
+            return fullPathWithPostfix;
+        }
+
         protected virtual bool IsFullLocalMetadata(TItemType item)
         {
             if (string.IsNullOrWhiteSpace(item.Name))
