@@ -675,7 +675,8 @@ namespace MediaBrowser.Providers.Manager
             var hasLocalMetadata = false;
             var foundImageTypes = new List<ImageType>();
 
-            foreach (var provider in providers.OfType<ILocalMetadataProvider<TItemType>>())
+            var providerList = providers.OfType<ILocalMetadataProvider<TItemType>>().ToList();
+            foreach (var provider in providerList)
             {
                 var providerName = provider.GetType().Name;
                 Logger.LogDebug("Running {Provider} for {Item}", providerName, logName);
