@@ -135,7 +135,7 @@ namespace MediaBrowser.Controller.Entities
         /// </summary>
         /// <value>The LUFS Value.</value>
         [JsonIgnore]
-        public float LUFS { get; set; }
+        public float? LUFS { get; set; }
 
         /// <summary>
         /// Gets or sets the channel identifier.
@@ -833,7 +833,7 @@ namespace MediaBrowser.Controller.Entities
             return CanDelete() && IsAuthorizedToDelete(user, allCollectionFolders);
         }
 
-        public bool CanDelete(User user)
+        public virtual bool CanDelete(User user)
         {
             var allCollectionFolders = LibraryManager.GetUserRootFolder().Children.OfType<Folder>().ToList();
 
@@ -1600,6 +1600,12 @@ namespace MediaBrowser.Controller.Entities
             if (user.GetPreference(PreferenceKind.BlockedTags).Any(i => allTags.Contains(i, StringComparison.OrdinalIgnoreCase)))
             {
                 return false;
+            }
+
+            var parent = GetParents().FirstOrDefault() ?? this;
+            if (parent is UserRootFolder)
+            {
+                return true;
             }
 
             var allowedTagsPreference = user.GetPreference(PreferenceKind.AllowedTags);

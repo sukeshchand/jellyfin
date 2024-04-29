@@ -70,9 +70,6 @@ namespace MediaBrowser.Providers.MediaInfo
         [GeneratedRegex(@"I:\s+(.*?)\s+LUFS")]
         private static partial Regex LUFSRegex();
 
-        [GeneratedRegex(@"REPLAYGAIN_TRACK_GAIN:\s+-?([0-9.]+)\s+dB")]
-        private static partial Regex ReplayGainTagRegex();
-
         /// <summary>
         /// Probes the specified item for metadata.
         /// </summary>
@@ -116,50 +113,7 @@ namespace MediaBrowser.Providers.MediaInfo
             }
 
             var libraryOptions = _libraryManager.GetLibraryOptions(item);
-            bool foundLUFSValue = false;
-
-            if (libraryOptions.UseReplayGainTags)
-            {
-                using (var process = new Process()
-                {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = _mediaEncoder.ProbePath,
-                        Arguments = $"-hide_banner -i \"{path}\"",
-                        RedirectStandardOutput = false,
-                        RedirectStandardError = true
-                    },
-                })
-                {
-                    try
-                    {
-                        process.Start();
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error starting ffmpeg");
-
-                        throw;
-                    }
-
-                    using var reader = process.StandardError;
-                    var output = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
-                    cancellationToken.ThrowIfCancellationRequested();
-                    Match split = ReplayGainTagRegex().Match(output);
-
-                    if (split.Success)
-                    {
-                        item.LUFS = DefaultLUFSValue - float.Parse(split.Groups[1].ValueSpan, CultureInfo.InvariantCulture.NumberFormat);
-                        foundLUFSValue = true;
-                    }
-                    else
-                    {
-                        item.LUFS = DefaultLUFSValue;
-                    }
-                }
-            }
-
-            if (libraryOptions.EnableLUFSScan && !foundLUFSValue)
+            if (libraryOptions.EnableLUFSScan && item.LUFS is null)
             {
                 using (var process = new Process()
                 {
@@ -192,16 +146,7 @@ namespace MediaBrowser.Providers.MediaInfo
                     {
                         item.LUFS = float.Parse(split[0].Groups[1].ValueSpan, CultureInfo.InvariantCulture.NumberFormat);
                     }
-                    else
-                    {
-                        item.LUFS = DefaultLUFSValue;
-                    }
                 }
-            }
-
-            if (!libraryOptions.EnableLUFSScan && !libraryOptions.UseReplayGainTags)
-            {
-                item.LUFS = DefaultLUFSValue;
             }
 
             _logger.LogDebug("LUFS for {ItemName} is {LUFS}.", item.Name, item.LUFS);
@@ -232,7 +177,7 @@ namespace MediaBrowser.Providers.MediaInfo
 
             if (!audio.IsLocked)
             {
-                await FetchDataFromTags(audio, options).ConfigureAwait(false);
+                await FetchDataFromTags(audio, mediaInfo, options).ConfigureAwait(false);
             }
 
             var mediaStreams = new List<MediaStream>(mediaInfo.MediaStreams);
@@ -247,8 +192,9 @@ namespace MediaBrowser.Providers.MediaInfo
         /// Fetches data from the tags.
         /// </summary>
         /// <param name="audio">The <see cref="Audio"/>.</param>
+        /// <param name="mediaInfo">The <see cref="Model.MediaInfo.MediaInfo"/>.</param>
         /// <param name="options">The <see cref="MetadataRefreshOptions"/>.</param>
-        private async Task FetchDataFromTags(Audio audio, MetadataRefreshOptions options)
+        private async Task FetchDataFromTags(Audio audio, Model.MediaInfo.MediaInfo mediaInfo, MetadataRefreshOptions options)
         {
             using var file = TagLib.File.Create(audio.Path);
             var tagTypes = file.TagTypesOnDisk;
@@ -338,6 +284,12 @@ namespace MediaBrowser.Providers.MediaInfo
                         audio.Artists = performers;
                     }
 
+                    if (albumArtists.Length == 0)
+                    {
+                        // Album artists not provided, fall back to performers (artists).
+                        albumArtists = performers;
+                    }
+
                     if (options.ReplaceAllMetadata && albumArtists.Length != 0)
                     {
                         audio.AlbumArtists = albumArtists;
@@ -385,6 +337,11 @@ namespace MediaBrowser.Providers.MediaInfo
                         : audio.Genres;
                 }
 
+                if (!double.IsNaN(tags.ReplayGainTrackGain))
+                {
+                    audio.LUFS = DefaultLUFSValue - (float)tags.ReplayGainTrackGain;
+                }
+
                 if (options.ReplaceAllMetadata || !audio.TryGetProviderId(MetadataProvider.MusicBrainzArtist, out _))
                 {
                     audio.SetProviderId(MetadataProvider.MusicBrainzArtist, tags.MusicBrainzArtistId);
@@ -407,7 +364,13 @@ namespace MediaBrowser.Providers.MediaInfo
 
                 if (options.ReplaceAllMetadata || !audio.TryGetProviderId(MetadataProvider.MusicBrainzTrack, out _))
                 {
-                    audio.SetProviderId(MetadataProvider.MusicBrainzTrack, tags.MusicBrainzTrackId);
+                    // Fallback to ffprobe as TagLib incorrectly provides recording MBID in `tags.MusicBrainzTrackId`.
+                    // See https://github.com/mono/taglib-sharp/issues/304
+                    var trackMbId = mediaInfo.GetProviderId(MetadataProvider.MusicBrainzTrack);
+                    if (trackMbId is not null)
+                    {
+                        audio.SetProviderId(MetadataProvider.MusicBrainzTrack, trackMbId);
+                    }
                 }
 
                 // Save extracted lyrics if they exist,
