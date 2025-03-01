@@ -23,7 +23,7 @@ namespace MediaBrowser.Controller.Entities
     /// </summary>
     public class AggregateFolder : Folder
     {
-        private readonly object _childIdsLock = new object();
+        private readonly Lock _childIdsLock = new();
 
         /// <summary>
         /// The _virtual children.
@@ -64,7 +64,7 @@ namespace MediaBrowser.Controller.Entities
             return CreateResolveArgs(directoryService, true).FileSystemChildren;
         }
 
-        protected override List<BaseItem> LoadChildren()
+        protected override IReadOnlyList<BaseItem> LoadChildren()
         {
             lock (_childIdsLock)
             {
@@ -159,7 +159,7 @@ namespace MediaBrowser.Controller.Entities
         {
             ClearCache();
 
-            await base.ValidateChildrenInternal(progress, recursive, refreshChildMetadata, false, refreshOptions, directoryService, cancellationToken)
+            await base.ValidateChildrenInternal(progress, recursive, refreshChildMetadata, allowRemoveRoot, refreshOptions, directoryService, cancellationToken)
                 .ConfigureAwait(false);
 
             ClearCache();

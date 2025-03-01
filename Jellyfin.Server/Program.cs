@@ -13,6 +13,7 @@ using Jellyfin.Server.Implementations;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Controller;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -185,6 +186,7 @@ namespace Jellyfin.Server
             }
             catch (Exception ex)
             {
+                _restartOnShutdown = false;
                 _logger.LogCritical(ex, "Error while starting server");
             }
             finally
@@ -192,6 +194,7 @@ namespace Jellyfin.Server
                 // Don't throw additional exception if startup failed.
                 if (appHost.ServiceProvider is not null)
                 {
+                    var isSqlite = false;
                     _logger.LogInformation("Running query planner optimizations in the database... This might take a while");
                     // Run before disposing the application
                     var context = await appHost.ServiceProvider.GetRequiredService<IDbContextFactory<JellyfinDbContext>>().CreateDbContextAsync().ConfigureAwait(false);
@@ -199,8 +202,14 @@ namespace Jellyfin.Server
                     {
                         if (context.Database.IsSqlite())
                         {
+                            isSqlite = true;
                             await context.Database.ExecuteSqlRawAsync("PRAGMA optimize").ConfigureAwait(false);
                         }
+                    }
+
+                    if (isSqlite)
+                    {
+                        SqliteConnection.ClearAllPools();
                     }
                 }
 

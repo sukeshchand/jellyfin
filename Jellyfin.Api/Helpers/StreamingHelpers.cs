@@ -132,7 +132,7 @@ public static class StreamingHelpers
 
                 mediaSource = string.IsNullOrEmpty(streamingRequest.MediaSourceId)
                     ? mediaSources[0]
-                    : mediaSources.Find(i => string.Equals(i.Id, streamingRequest.MediaSourceId, StringComparison.Ordinal));
+                    : mediaSources.FirstOrDefault(i => string.Equals(i.Id, streamingRequest.MediaSourceId, StringComparison.Ordinal));
 
                 if (mediaSource is null && Guid.Parse(streamingRequest.MediaSourceId).Equals(streamingRequest.Id))
                 {
@@ -145,6 +145,12 @@ public static class StreamingHelpers
             var liveStreamInfo = await mediaSourceManager.GetLiveStreamWithDirectStreamProvider(streamingRequest.LiveStreamId, cancellationToken).ConfigureAwait(false);
             mediaSource = liveStreamInfo.Item1;
             state.DirectStreamProvider = liveStreamInfo.Item2;
+
+            // Cap the max bitrate when it is too high. This is usually due to ffmpeg is unable to probe the source liveTV streams' bitrate.
+            if (mediaSource.FallbackMaxStreamingBitrate is not null && streamingRequest.VideoBitRate is not null)
+            {
+                streamingRequest.VideoBitRate = Math.Min(streamingRequest.VideoBitRate.Value, mediaSource.FallbackMaxStreamingBitrate.Value);
+            }
         }
 
         var encodingOptions = serverConfigurationManager.GetEncodingOptions();
@@ -204,7 +210,7 @@ public static class StreamingHelpers
                     && state.VideoRequest.VideoBitRate.Value >= state.VideoStream.BitRate.Value)
                 {
                     // Don't downscale the resolution if the width/height/MaxWidth/MaxHeight is not requested,
-                    // and the requested video bitrate is higher than source video bitrate.
+                    // and the requested video bitrate is greater than source video bitrate.
                     if (state.VideoStream.Width.HasValue || state.VideoStream.Height.HasValue)
                     {
                         state.VideoRequest.MaxWidth = state.VideoStream?.Width;
@@ -213,15 +219,26 @@ public static class StreamingHelpers
                 }
                 else
                 {
+                    var h264EquivalentBitrate = EncodingHelper.ScaleBitrate(
+                        state.OutputVideoBitrate.Value,
+                        state.ActualOutputVideoCodec,
+                        "h264");
                     var resolution = ResolutionNormalizer.Normalize(
                         state.VideoStream?.BitRate,
                         state.OutputVideoBitrate.Value,
+                        h264EquivalentBitrate,
                         state.VideoRequest.MaxWidth,
-                        state.VideoRequest.MaxHeight);
+                        state.VideoRequest.MaxHeight,
+                        state.TargetFramerate);
 
                     state.VideoRequest.MaxWidth = resolution.MaxWidth;
                     state.VideoRequest.MaxHeight = resolution.MaxHeight;
                 }
+            }
+
+            if (state.AudioStream is not null && !EncodingHelper.IsCopyCodec(state.OutputAudioCodec) && string.Equals(state.AudioStream.Codec, state.OutputAudioCodec, StringComparison.OrdinalIgnoreCase) && state.OutputAudioBitrate.HasValue)
+            {
+                state.OutputAudioCodec = state.SupportedAudioCodecs.Where(c => !EncodingHelper.LosslessAudioCodecs.Contains(c)).FirstOrDefault(mediaEncoder.CanEncodeToAudioCodec);
             }
         }
 

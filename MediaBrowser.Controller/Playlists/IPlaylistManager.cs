@@ -34,7 +34,7 @@ namespace MediaBrowser.Controller.Playlists
         Task UpdatePlaylist(PlaylistUpdateRequest request);
 
         /// <summary>
-        /// Gets the playlists.
+        /// Gets all playlists a user has access to.
         /// </summary>
         /// <param name="userId">The user identifier.</param>
         /// <returns>IEnumerable&lt;Playlist&gt;.</returns>
@@ -92,8 +92,9 @@ namespace MediaBrowser.Controller.Playlists
         /// <param name="playlistId">The playlist identifier.</param>
         /// <param name="entryId">The entry identifier.</param>
         /// <param name="newIndex">The new index.</param>
+        /// <param name="callingUserId">The calling user.</param>
         /// <returns>Task.</returns>
-        Task MoveItemAsync(string playlistId, string entryId, int newIndex);
+        Task MoveItemAsync(string playlistId, string entryId, int newIndex, Guid callingUserId);
 
         /// <summary>
         /// Removed all playlists of a user.
